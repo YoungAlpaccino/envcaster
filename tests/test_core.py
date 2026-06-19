@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from envcast import CastError, Env, MissingEnvError
+from envcaster import CastError, Env, MissingEnvError
 
 
 def make(**values):
@@ -145,7 +145,7 @@ def test_prefix():
 
 
 def test_default_env_reads_live_os_environ(monkeypatch):
-    from envcast import env
+    from envcaster import env
 
     monkeypatch.setenv("ENVCAST_TEST_X", "42")
     assert env.int("ENVCAST_TEST_X") == 42

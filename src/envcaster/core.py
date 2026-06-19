@@ -20,7 +20,7 @@ T = TypeVar("T")
 
 
 class EnvError(Exception):
-    """Base class for all envcast errors."""
+    """Base class for all envcaster errors."""
 
 
 class MissingEnvError(EnvError, KeyError):

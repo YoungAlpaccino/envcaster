@@ -1,4 +1,4 @@
-from envcast import load_dotenv, read_dotenv
+from envcaster import load_dotenv, read_dotenv
 
 SAMPLE = """\
 # a comment

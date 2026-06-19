@@ -1,15 +1,15 @@
-# envcast ⚙️
+# envcaster ⚙️
 
 > Read environment variables as the **type you actually want** — `int`, `bool`, `list`, `json`, `Path` — with defaults, required-checks, and errors that name the offending variable. Zero dependencies, pure standard library.
 
 [![CI](https://github.com/YoungAlpaccino/envcast/actions/workflows/ci.yml/badge.svg)](https://github.com/YoungAlpaccino/envcast/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/envcast.svg)](https://pypi.org/project/envcast/)
-[![Python](https://img.shields.io/pypi/pyversions/envcast.svg)](https://pypi.org/project/envcast/)
+[![PyPI](https://img.shields.io/pypi/v/envcaster.svg)](https://pypi.org/project/envcaster/)
+[![Python](https://img.shields.io/pypi/pyversions/envcaster.svg)](https://pypi.org/project/envcaster/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 `os.environ` only ever gives you strings. So every project grows the same little
 pile of `int(os.environ.get("PORT", "8000"))` and hand-rolled truthy checks that
-quietly treat `"False"` as `True`. **envcast** is that pile, done once and done right.
+quietly treat `"False"` as `True`. **envcaster** is that pile, done once and done right.
 
 - 🪶 **Zero required dependencies** — pure standard library.
 - 🎯 **Typed getters** — `str · int · float · bool · list · json · path` (+ custom `cast`).
@@ -22,7 +22,7 @@ quietly treat `"False"` as `True`. **envcast** is that pile, done once and done 
 ## Install
 
 ```bash
-pip install envcast
+pip install envcaster
 ```
 
 ---
@@ -30,7 +30,7 @@ pip install envcast
 ## Quick start
 
 ```python
-from envcast import env
+from envcaster import env
 
 PORT    = env.int("PORT", default=8000)
 DEBUG   = env.bool("DEBUG", default=False)
@@ -87,7 +87,7 @@ env.cast("COLOR", lambda v: int(v, 16))    # "ff0000" -> 16711680
 ### Scoped readers with a prefix
 
 ```python
-from envcast import Env
+from envcaster import Env
 
 app = Env(prefix="APP_")
 app.int("PORT")        # reads APP_PORT
@@ -104,7 +104,7 @@ cfg.int("PORT")                       # 9000
 ### Load a `.env` file (no dependency)
 
 ```python
-from envcast import load_dotenv, env
+from envcaster import load_dotenv, env
 
 load_dotenv()                  # reads ./.env into os.environ (won't override real env vars)
 load_dotenv(".env.local", override=True)
@@ -112,7 +112,7 @@ load_dotenv(".env.local", override=True)
 PORT = env.int("PORT")
 
 # Or parse without touching the environment:
-from envcast import read_dotenv
+from envcaster import read_dotenv
 values = read_dotenv(".env")   # -> {"PORT": "8000", ...}
 ```
 
@@ -151,7 +151,7 @@ DEBUG = os.environ.get("DEBUG", "false").lower() in ("1", "true", "yes")
 HOSTS = [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 
 # After
-from envcast import env
+from envcaster import env
 PORT  = env.int("PORT", default=8000)
 DEBUG = env.bool("DEBUG", default=False)
 HOSTS = env.list("ALLOWED_HOSTS", default=[])

@@ -1,11 +1,11 @@
-"""envcast — typed, dependency-free environment variable loading.
+"""envcaster — typed, dependency-free environment variable loading.
 
 Read environment variables as the type you actually want — ``int``, ``float``,
 ``bool``, ``list``, ``json``, ``Path`` — with defaults, required-checks, and
 error messages that tell you exactly which variable was wrong and why. Plus a
 tiny ``.env`` loader. Zero dependencies, pure standard library.
 
-    from envcast import env
+    from envcaster import env
 
     PORT = env.int("PORT", default=8000)
     DEBUG = env.bool("DEBUG", default=False)
@@ -13,8 +13,8 @@ tiny ``.env`` loader. Zero dependencies, pure standard library.
     SECRET = env.str("SECRET_KEY", required=True)
 """
 
-from envcast.core import CastError, Env, EnvError, MissingEnvError, env
-from envcast.dotenv import load_dotenv, read_dotenv
+from envcaster.core import CastError, Env, EnvError, MissingEnvError, env
+from envcaster.dotenv import load_dotenv, read_dotenv
 
 __version__ = "0.1.0"
 

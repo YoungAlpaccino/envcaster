@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "envcast"
+name = "envcaster"
 version = "0.1.0"
 description = "Typed, dependency-free environment variable loading: read env vars as int/bool/list/json/Path with defaults, required-checks, and clear errors."
 readme = "README.md"
@@ -38,7 +38,7 @@ Issues = "https://github.com/YoungAlpaccino/envcast/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-envcast = ["py.typed"]
+envcaster = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
