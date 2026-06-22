@@ -2,7 +2,13 @@ import json
 
 import pytest
 
-from envcaster import CastError, Env, MissingEnvError
+from envcaster import (
+    CastError,
+    Env,
+    EnvValidationError,
+    MissingEnvError,
+    ValidationError,
+)
 
 
 def make(**values):
@@ -149,3 +155,100 @@ def test_default_env_reads_live_os_environ(monkeypatch):
 
     monkeypatch.setenv("ENVCAST_TEST_X", "42")
     assert env.int("ENVCAST_TEST_X") == 42
+
+
+# -- choices --------------------------------------------------------------
+
+
+def test_str_choices_accepts_allowed():
+    assert make(STAGE="prod").str("STAGE", choices=["dev", "prod"]) == "prod"
+
+
+def test_str_choices_rejects_other():
+    with pytest.raises(ValidationError) as exc:
+        make(STAGE="staging").str("STAGE", choices=["dev", "prod"])
+    assert exc.value.name == "STAGE"
+
+
+def test_int_choices():
+    assert make(V="2").int("V", choices=[1, 2, 3]) == 2
+    with pytest.raises(ValidationError):
+        make(V="9").int("V", choices=[1, 2, 3])
+
+
+def test_cast_choices_checks_converted_value():
+    assert make(LEVEL="INFO").cast("LEVEL", str.upper, choices=["INFO", "DEBUG"]) == "INFO"
+    with pytest.raises(ValidationError):
+        make(LEVEL="trace").cast("LEVEL", str.upper, choices=["INFO", "DEBUG"])
+
+
+def test_choices_not_applied_to_default():
+    # A provided default is trusted and not validated against choices.
+    assert make().str("STAGE", default="anything", choices=["dev"]) == "anything"
+
+
+# -- min / max ------------------------------------------------------------
+
+
+def test_int_min_max_ok():
+    assert make(PORT="8000").int("PORT", min=1, max=65535) == 8000
+
+
+def test_int_below_min_raises():
+    with pytest.raises(ValidationError) as exc:
+        make(PORT="0").int("PORT", min=1)
+    assert "must be >=" in str(exc.value)
+
+
+def test_int_above_max_raises():
+    with pytest.raises(ValidationError):
+        make(PORT="70000").int("PORT", max=65535)
+
+
+def test_float_bounds():
+    assert make(R="0.5").float("R", min=0.0, max=1.0) == 0.5
+    with pytest.raises(ValidationError):
+        make(R="1.5").float("R", min=0.0, max=1.0)
+
+
+def test_validation_error_is_value_error():
+    assert issubclass(ValidationError, ValueError)
+
+
+# -- collect (batch validation) -------------------------------------------
+
+
+def test_collect_passes_when_all_valid():
+    e = make(PORT="8000", SECRET="x")
+    with e.collect() as cfg:
+        port = cfg.int("PORT")
+        secret = cfg.str("SECRET", required=True)
+    assert port == 8000
+    assert secret == "x"
+
+
+def test_collect_reports_all_errors_at_once():
+    e = make(PORT="not-a-number")
+    with pytest.raises(EnvValidationError) as exc:
+        with e.collect() as cfg:
+            cfg.int("PORT")  # CastError
+            cfg.str("SECRET", required=True)  # MissingEnvError
+            cfg.str("DB_URL", required=True)  # MissingEnvError
+    assert len(exc.value.errors) == 3
+    message = str(exc.value)
+    assert "PORT" in message and "SECRET" in message and "DB_URL" in message
+
+
+def test_collect_returns_none_for_failed_getter_inside_block():
+    e = make()
+    captured = {}
+    with pytest.raises(EnvValidationError):
+        with e.collect() as cfg:
+            captured["v"] = cfg.str("MISSING", required=True)
+    assert captured["v"] is None
+
+
+def test_collect_does_not_raise_when_empty():
+    e = make(NAME="ok")
+    with e.collect() as cfg:
+        assert cfg.str("NAME") == "ok"

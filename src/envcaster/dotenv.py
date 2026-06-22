@@ -1,18 +1,22 @@
 """A tiny, dependency-free ``.env`` reader.
 
 Just enough to load a local ``.env`` in development. For complex needs
-(variable interpolation, multiline values) reach for python-dotenv.
+(multiline values, advanced shell semantics) reach for python-dotenv.
 """
 
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
-from typing import Dict, Union
+from typing import Dict, Mapping, Union
 
 __all__ = ["read_dotenv", "load_dotenv"]
 
 _PathLike = Union[str, "os.PathLike[str]"]
+
+# ${NAME} or $NAME references, used only when interpolate=True.
+_VAR_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)")
 
 
 def _unquote(value: str) -> str:
@@ -22,11 +26,26 @@ def _unquote(value: str) -> str:
     return value
 
 
-def read_dotenv(path: _PathLike = ".env") -> Dict[str, str]:
+def _interpolate(value: str, context: Mapping[str, str]) -> str:
+    def replace(match: "re.Match[str]") -> str:
+        name = match.group(1) or match.group(2)
+        return context.get(name, "")
+
+    # Honor a backslash escape: \$ stays a literal dollar sign.
+    parts = value.split(r"\$")
+    return "$".join(_VAR_RE.sub(replace, part) for part in parts)
+
+
+def read_dotenv(path: _PathLike = ".env", *, interpolate: bool = False) -> Dict[str, str]:
     """Parse a ``.env`` file into a dict. Returns ``{}`` if the file is absent.
 
     Supports ``KEY=value``, ``export KEY=value``, ``#`` comments, blank lines,
     and single/double-quoted values. Does **not** touch ``os.environ``.
+
+    With ``interpolate=True``, ``${VAR}`` / ``$VAR`` references inside unquoted
+    or double-quoted values are expanded from earlier keys in the same file and
+    then from ``os.environ`` (unknown references become empty). Single-quoted
+    values are always literal, and ``\\$`` is a literal dollar sign.
     """
     file = Path(path)
     if not file.is_file():
@@ -47,20 +66,27 @@ def read_dotenv(path: _PathLike = ".env") -> Dict[str, str]:
             continue
         # Strip an inline comment only when the value is not quoted.
         stripped = value.strip()
-        if stripped[:1] not in ("'", '"') and " #" in value:
+        quote = stripped[:1]
+        if quote not in ("'", '"') and " #" in value:
             value = value.split(" #", 1)[0]
-        result[key] = _unquote(value)
+        text = _unquote(value)
+        if interpolate and quote != "'":
+            text = _interpolate(text, {**os.environ, **result})
+        result[key] = text
     return result
 
 
-def load_dotenv(path: _PathLike = ".env", *, override: bool = False) -> Dict[str, str]:
+def load_dotenv(
+    path: _PathLike = ".env", *, override: bool = False, interpolate: bool = False
+) -> Dict[str, str]:
     """Read a ``.env`` file and inject its values into ``os.environ``.
 
     By default existing environment variables win (``override=False``), so real
-    environment configuration is never clobbered by the file. Returns the dict
-    that was parsed from the file.
+    environment configuration is never clobbered by the file. Pass
+    ``interpolate=True`` to expand ``${VAR}`` references (see :func:`read_dotenv`).
+    Returns the dict that was parsed from the file.
     """
-    values = read_dotenv(path)
+    values = read_dotenv(path, interpolate=interpolate)
     for key, value in values.items():
         if override or key not in os.environ:
             os.environ[key] = value

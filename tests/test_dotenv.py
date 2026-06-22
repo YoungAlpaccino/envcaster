@@ -55,3 +55,42 @@ def test_load_dotenv_override(tmp_path, monkeypatch):
     import os
 
     assert os.environ["NAME"] == "alice"
+
+
+# -- interpolation --------------------------------------------------------
+
+
+def test_interpolation_off_by_default(tmp_path):
+    f = write(tmp_path, "HOST=localhost\nURL=http://${HOST}:8000\n")
+    assert read_dotenv(f)["URL"] == "http://${HOST}:8000"
+
+
+def test_interpolation_expands_earlier_keys(tmp_path):
+    f = write(tmp_path, "HOST=localhost\nURL=http://${HOST}:8000\n")
+    assert read_dotenv(f, interpolate=True)["URL"] == "http://localhost:8000"
+
+
+def test_interpolation_bare_dollar_form(tmp_path):
+    f = write(tmp_path, "USER=bob\nGREETING=hi-$USER\n")
+    assert read_dotenv(f, interpolate=True)["GREETING"] == "hi-bob"
+
+
+def test_interpolation_falls_back_to_os_environ(tmp_path, monkeypatch):
+    monkeypatch.setenv("OUTER", "from-env")
+    f = write(tmp_path, "VAL=${OUTER}\n")
+    assert read_dotenv(f, interpolate=True)["VAL"] == "from-env"
+
+
+def test_interpolation_unknown_becomes_empty(tmp_path):
+    f = write(tmp_path, "VAL=a-${NOPE}-b\n")
+    assert read_dotenv(f, interpolate=True)["VAL"] == "a--b"
+
+
+def test_single_quotes_are_literal_even_with_interpolation(tmp_path):
+    f = write(tmp_path, "HOST=localhost\nLIT='${HOST}'\n")
+    assert read_dotenv(f, interpolate=True)["LIT"] == "${HOST}"
+
+
+def test_escaped_dollar_is_literal(tmp_path):
+    f = write(tmp_path, r"PRICE=\$5" + "\n")
+    assert read_dotenv(f, interpolate=True)["PRICE"] == "$5"

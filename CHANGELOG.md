@@ -4,6 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-19
+
+### Added
+- `choices=` on `str`, `int`, `float`, and `cast` — restrict a value to an
+  allowed set.
+- `min=` / `max=` bounds on `int` and `float`.
+- `ValidationError` — raised when a value parses but fails a `choices`/`min`/
+  `max` constraint. Subclasses `EnvError` and `ValueError`, and is distinct from
+  `CastError` (which means the value could not be parsed at all).
+- `Env.collect()` — a context manager that validates a whole config block and
+  raises a single `EnvValidationError` listing **every** problem at once, instead
+  of failing on the first.
+- `EnvValidationError` — aggregates the errors gathered by `collect()`.
+- `read_dotenv` / `load_dotenv` gained an opt-in `interpolate=True` that expands
+  `${VAR}` / `$VAR` references (from earlier keys, then `os.environ`). Single-
+  quoted values stay literal and `\$` is an escaped dollar sign.
+
+### Notes
+- Fully backward compatible — all additions are new, keyword-only options.
+
 ## [0.1.0] - 2026-06-18
 
 ### Added

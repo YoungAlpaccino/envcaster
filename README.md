@@ -13,9 +13,11 @@ quietly treat `"False"` as `True`. **envcaster** is that pile, done once and don
 
 - 🪶 **Zero required dependencies** — pure standard library.
 - 🎯 **Typed getters** — `str · int · float · bool · list · json · path` (+ custom `cast`).
+- ✅ **Built-in validation** — `choices`, `min`/`max` bounds, and a `ValidationError` that's distinct from parse failures.
+- 📋 **Batch config checks** — `env.collect()` reports *every* bad/missing variable at once, not one per restart.
 - 🧯 **Loud, precise errors** — missing or malformed values tell you *which* variable and *why*.
 - 🧪 **Fully tested** across Python 3.9–3.12.
-- 🧩 **Drop-in `.env` loader** that never clobbers real environment config.
+- 🧩 **Drop-in `.env` loader** with optional `${VAR}` interpolation — never clobbers real environment config.
 
 ---
 
@@ -84,6 +86,39 @@ env.cast("COLOR", lambda v: int(v, 16))    # "ff0000" -> 16711680
 # exceptions from your function are wrapped in CastError, naming the variable
 ```
 
+### Validate values — `choices`, `min`, `max`
+
+```python
+env.str("STAGE", choices=["dev", "staging", "prod"])   # else ValidationError
+env.int("PORT", min=1, max=65535)                       # range-checked
+env.float("SAMPLE_RATE", min=0.0, max=1.0)
+env.cast("LEVEL", str.upper, choices=["INFO", "DEBUG"]) # choices check the converted value
+```
+
+A value that parses but breaks a constraint raises `ValidationError` (a
+`ValueError`), kept distinct from `CastError` (which means it couldn't be parsed
+at all). A `default` you supply is trusted and never constraint-checked.
+
+### Validate a whole config at once — `collect()`
+
+Stop debugging your config one missing variable per restart. `collect()` gathers
+**every** error in the block and raises a single report:
+
+```python
+from envcaster import env
+
+with env.collect() as cfg:
+    PORT   = cfg.int("PORT", default=8000)
+    SECRET = cfg.str("SECRET_KEY", required=True)
+    DB_URL = cfg.str("DATABASE_URL", required=True)
+    REGION = cfg.str("REGION", choices=["us", "eu"])
+
+# If SECRET_KEY and DATABASE_URL are both missing, you get ONE error:
+#   EnvValidationError: 2 environment variable errors found:
+#     - Required environment variable 'SECRET_KEY' is not set.
+#     - Required environment variable 'DATABASE_URL' is not set.
+```
+
 ### Scoped readers with a prefix
 
 ```python
@@ -114,10 +149,14 @@ PORT = env.int("PORT")
 # Or parse without touching the environment:
 from envcaster import read_dotenv
 values = read_dotenv(".env")   # -> {"PORT": "8000", ...}
+
+# Opt in to ${VAR} / $VAR expansion (from earlier keys, then os.environ):
+read_dotenv(".env", interpolate=True)        # HOST=localhost / URL=http://${HOST} -> http://localhost
 ```
 
-Handles `KEY=value`, `export KEY=value`, `# comments`, and quoted values. For
-interpolation or multiline values, use [python-dotenv](https://github.com/theskumar/python-dotenv).
+Handles `KEY=value`, `export KEY=value`, `# comments`, and quoted values.
+Single-quoted values stay literal and `\$` is an escaped dollar. For multiline
+values, use [python-dotenv](https://github.com/theskumar/python-dotenv).
 
 ---
 
@@ -125,19 +164,20 @@ interpolation or multiline values, use [python-dotenv](https://github.com/thesku
 
 | Call | Returns | Notes |
 |---|---|---|
-| `env.str(name, default=…, required=False)` | `str` | The raw value, unchanged |
-| `env.int(name, …)` | `int` | Base-10, whitespace stripped |
-| `env.float(name, …)` | `float` | |
+| `env.str(name, default=…, required=False, choices=None)` | `str` | The raw value, unchanged |
+| `env.int(name, …, min=None, max=None, choices=None)` | `int` | Base-10, whitespace stripped |
+| `env.float(name, …, min=None, max=None, choices=None)` | `float` | |
 | `env.bool(name, …)` | `bool` | `1/true/t/yes/y/on` ↔ `0/false/f/no/n/off` |
 | `env.list(name, …, sep=",", cast=str)` | `list` | Trims items, drops empties, per-item `cast` |
 | `env.json(name, …)` | `Any` | `json.loads` of the value |
 | `env.path(name, …)` | `pathlib.Path` | Not resolved/validated |
-| `env.cast(name, func, …)` | `Any` | Apply any callable; errors wrapped in `CastError` |
+| `env.cast(name, func, …, choices=None)` | `Any` | Apply any callable; errors wrapped in `CastError` |
+| `env.collect()` | context manager | Batch-validate; raises one `EnvValidationError` |
 | `Env(source=None, prefix="")` | `Env` | Custom mapping and/or name prefix |
-| `read_dotenv(path=".env")` | `dict` | Parse a `.env` file; `{}` if absent |
-| `load_dotenv(path=".env", override=False)` | `dict` | Inject into `os.environ` |
+| `read_dotenv(path=".env", interpolate=False)` | `dict` | Parse a `.env` file; `{}` if absent |
+| `load_dotenv(path=".env", override=False, interpolate=False)` | `dict` | Inject into `os.environ` |
 
-**Errors:** `EnvError` (base) · `MissingEnvError` (also `KeyError`) · `CastError` (also `ValueError`).
+**Errors:** `EnvError` (base) · `MissingEnvError` (also `KeyError`) · `CastError` (also `ValueError`) · `ValidationError` (also `ValueError`, for `choices`/`min`/`max`) · `EnvValidationError` (aggregate from `collect()`).
 
 ---
 

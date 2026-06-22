@@ -13,10 +13,18 @@ tiny ``.env`` loader. Zero dependencies, pure standard library.
     SECRET = env.str("SECRET_KEY", required=True)
 """
 
-from envcaster.core import CastError, Env, EnvError, MissingEnvError, env
+from envcaster.core import (
+    CastError,
+    Env,
+    EnvError,
+    EnvValidationError,
+    MissingEnvError,
+    ValidationError,
+    env,
+)
 from envcaster.dotenv import load_dotenv, read_dotenv
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "env",
@@ -24,6 +32,8 @@ __all__ = [
     "EnvError",
     "MissingEnvError",
     "CastError",
+    "ValidationError",
+    "EnvValidationError",
     "load_dotenv",
     "read_dotenv",
 ]
