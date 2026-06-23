@@ -12,7 +12,7 @@ pile of `int(os.environ.get("PORT", "8000"))` and hand-rolled truthy checks that
 quietly treat `"False"` as `True`. **envcaster** is that pile, done once and done right.
 
 - 🪶 **Zero required dependencies** — pure standard library.
-- 🎯 **Typed getters** — `str · int · float · bool · list · json · path` (+ custom `cast`).
+- 🎯 **Typed getters** — `str · int · float · bool · list · json · path · decimal · duration · datetime · date · bytes · url` (+ custom `cast`).
 - ✅ **Built-in validation** — `choices`, `min`/`max` bounds, and a `ValidationError` that's distinct from parse failures.
 - 📋 **Batch config checks** — `env.collect()` reports *every* bad/missing variable at once, not one per restart.
 - 🧯 **Loud, precise errors** — missing or malformed values tell you *which* variable and *why*.
@@ -76,6 +76,24 @@ env.json("LIMITS")          # '{"rpm": 60}' -> {"rpm": 60}
 env.path("LOG_DIR")         # "/var/log"    -> PosixPath("/var/log")
 ```
 
+### Richer types — money, durations, dates, bytes, URLs
+
+```python
+from decimal import Decimal
+
+env.decimal("PRICE")                       # "9.99"      -> Decimal("9.99")  (exact)
+env.duration("TIMEOUT")                    # "1h30m"     -> timedelta(seconds=5400)
+env.duration("RETRY", default=None)        # "500ms"     -> timedelta(microseconds=500000)
+env.datetime("STARTS_AT")                  # "2026-06-22T12:00:00Z" -> aware datetime (UTC)
+env.date("RELEASE_DAY")                    # "2026-06-22" -> date(2026, 6, 22)
+env.bytes("API_KEY", encoding="base64")    # "aGVsbG8="  -> b"hello"
+env.url("WEBHOOK_URL")                     # requires scheme+host; http/https by default
+env.url("REDIS_URL", schemes=["redis"])    # restrict allowed schemes
+```
+
+`duration` accepts plain seconds or `ms s m h d w` tokens (`"30"`, `"5m"`,
+`"1h30m"`, `"2d"`). `decimal`/`duration`/`datetime`/`date` all take `min`/`max`.
+
 ### Anything else — bring your own cast
 
 ```python
@@ -127,6 +145,9 @@ from envcaster import Env
 app = Env(prefix="APP_")
 app.int("PORT")        # reads APP_PORT
 app.bool("DEBUG")      # reads APP_DEBUG
+
+db = app.prefixed("DB_")   # chain prefixes
+db.str("HOST")             # reads APP_DB_HOST
 ```
 
 ### Read from somewhere other than `os.environ`
@@ -171,8 +192,15 @@ values, use [python-dotenv](https://github.com/theskumar/python-dotenv).
 | `env.list(name, …, sep=",", cast=str)` | `list` | Trims items, drops empties, per-item `cast` |
 | `env.json(name, …)` | `Any` | `json.loads` of the value |
 | `env.path(name, …)` | `pathlib.Path` | Not resolved/validated |
+| `env.decimal(name, …, min=None, max=None, choices=None)` | `Decimal` | Exact precision |
+| `env.duration(name, …, min=None, max=None)` | `timedelta` | Seconds or `500ms`/`5m`/`1h30m`/`2d`/`1w` |
+| `env.datetime(name, …, min=None, max=None)` | `datetime` | ISO 8601; trailing `Z` = UTC |
+| `env.date(name, …, min=None, max=None)` | `date` | ISO 8601 `YYYY-MM-DD` |
+| `env.bytes(name, …, encoding="utf-8")` | `bytes` | Codec, or `base64`/`hex` |
+| `env.url(name, …, schemes=("http","https"))` | `str` | Validated; requires scheme + host |
 | `env.cast(name, func, …, choices=None)` | `Any` | Apply any callable; errors wrapped in `CastError` |
 | `env.collect()` | context manager | Batch-validate; raises one `EnvValidationError` |
+| `env.prefixed(prefix)` | `Env` | New reader with a combined prefix |
 | `Env(source=None, prefix="")` | `Env` | Custom mapping and/or name prefix |
 | `read_dotenv(path=".env", interpolate=False)` | `dict` | Parse a `.env` file; `{}` if absent |
 | `load_dotenv(path=".env", override=False, interpolate=False)` | `dict` | Inject into `os.environ` |

@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-06-22
+
+### Added
+- New typed getters:
+  - `decimal` — exact `decimal.Decimal` (with `min`/`max`/`choices`).
+  - `duration` — `datetime.timedelta` from seconds or `500ms` / `5m` / `1h30m` /
+    `2d` / `1w` forms (with `min`/`max`).
+  - `datetime` / `date` — ISO 8601 parsing; a trailing `Z` is treated as UTC
+    (with `min`/`max`).
+  - `bytes` — `utf-8` (or any codec) by default, plus `encoding="base64"` /
+    `encoding="hex"` decoders for keys and secrets.
+  - `url` — a validated URL string; requires scheme + host and restricts the
+    scheme via `schemes=` (default `http`/`https`, `None` to allow any).
+- `Env.prefixed(prefix)` — derive a new reader with a combined prefix, e.g.
+  `Env(prefix="APP_").prefixed("DB_").str("HOST")` reads `APP_DB_HOST`.
+- `collect()` now auto-covers every getter (including all of the above); adding a
+  getter no longer requires updating the batch-validation wrapper.
+
+### Notes
+- Fully backward compatible — all additions are new getters/options.
+
 ## [0.2.0] - 2026-06-19
 
 ### Added

@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import builtins
+import datetime as _dt
 import json as _json
 import os
+import re
+import urllib.parse
 from contextlib import contextmanager
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, List, Mapping, Optional, Sequence, TypeVar
 
@@ -88,6 +93,10 @@ _USE_DEFAULT: Any = object()
 
 _TRUE = {"1", "true", "t", "yes", "y", "on"}
 _FALSE = {"0", "false", "f", "no", "n", "off"}
+
+# Duration: a bare number is seconds; otherwise a run of <number><unit> tokens.
+_DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0, "w": 604800.0}
+_DURATION_TOKEN = re.compile(r"(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)", re.IGNORECASE)
 
 
 class Env:
@@ -303,6 +312,179 @@ class Env:
         self._check_choices(name, value, choices)
         return value
 
+    def decimal(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        min: Optional[Decimal] = None,
+        max: Optional[Decimal] = None,
+        choices: Optional[Iterable[Decimal]] = None,
+    ) -> Decimal:
+        """Return the variable as a :class:`decimal.Decimal` (exact precision)."""
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        try:
+            value = Decimal(raw.strip())
+        except InvalidOperation:
+            raise CastError(self._prefix + name, raw, "decimal") from None
+        self._check_choices(name, value, choices)
+        self._check_bounds(name, value, min, max)
+        return value
+
+    def duration(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        min: Optional[_dt.timedelta] = None,
+        max: Optional[_dt.timedelta] = None,
+    ) -> _dt.timedelta:
+        """Return the variable as a :class:`datetime.timedelta`.
+
+        A bare number is seconds (``"30"`` -> 30s). Otherwise a run of
+        ``<number><unit>`` tokens is summed, where unit is one of
+        ``ms s m h d w`` (e.g. ``"500ms"``, ``"5m"``, ``"1h30m"``, ``"2d"``).
+        """
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        text = raw.strip()
+        seconds: Optional[float] = None
+        if text:
+            try:
+                seconds = builtins.float(text)
+            except ValueError:
+                pos, total, matched = 0, 0.0, False
+                for m in _DURATION_TOKEN.finditer(text):
+                    if m.start() != pos:
+                        break
+                    total += builtins.float(m.group(1)) * _DURATION_UNITS[m.group(2).lower()]
+                    pos, matched = m.end(), True
+                if matched and pos == len(text):
+                    seconds = total
+        if seconds is None:
+            raise CastError(
+                self._prefix + name,
+                raw,
+                "duration",
+                hint="Use seconds, or forms like '500ms', '5m', '1h30m', '2d'.",
+            )
+        value = _dt.timedelta(seconds=seconds)
+        self._check_bounds(name, value, min, max)
+        return value
+
+    def datetime(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        min: Optional[_dt.datetime] = None,
+        max: Optional[_dt.datetime] = None,
+    ) -> _dt.datetime:
+        """Parse the variable as an ISO 8601 datetime (a trailing ``Z`` is UTC)."""
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        text = raw.strip()
+        iso = text[:-1] + "+00:00" if text.endswith("Z") else text
+        try:
+            value = _dt.datetime.fromisoformat(iso)
+        except ValueError:
+            raise CastError(self._prefix + name, raw, "ISO 8601 datetime") from None
+        self._check_bounds(name, value, min, max)
+        return value
+
+    def date(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        min: Optional[_dt.date] = None,
+        max: Optional[_dt.date] = None,
+    ) -> _dt.date:
+        """Parse the variable as an ISO 8601 date (``YYYY-MM-DD``)."""
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        try:
+            value = _dt.date.fromisoformat(raw.strip())
+        except ValueError:
+            raise CastError(self._prefix + name, raw, "ISO 8601 date") from None
+        self._check_bounds(name, value, min, max)
+        return value
+
+    def bytes(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        encoding: str = "utf-8",
+    ) -> bytes:
+        """Return the variable as ``bytes``.
+
+        ``encoding`` is either a text codec (default ``"utf-8"``) or one of the
+        binary decoders ``"base64"`` / ``"hex"`` for keys and secrets.
+        """
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        enc = encoding.lower()
+        try:
+            if enc == "base64":
+                return base64.b64decode(raw.strip(), validate=True)
+            if enc == "hex":
+                return builtins.bytes.fromhex(raw.strip())
+            return raw.encode(encoding)
+        except (ValueError, LookupError) as exc:
+            raise CastError(self._prefix + name, raw, f"{encoding} bytes", hint=str(exc)) from None
+
+    def url(
+        self,
+        name: str,
+        default: Any = _UNSET,
+        *,
+        required: bool = False,
+        schemes: Optional[Iterable[str]] = ("http", "https"),
+    ) -> str:
+        """Return the variable as a validated URL string.
+
+        Requires a scheme and a network location. Restrict the allowed scheme
+        with ``schemes`` (default ``("http", "https")``); pass ``schemes=None``
+        to allow any.
+        """
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        text = raw.strip()
+        parsed = urllib.parse.urlparse(text)
+        if not parsed.scheme or not parsed.netloc:
+            raise CastError(
+                self._prefix + name, raw, "URL", hint="Expected e.g. 'https://host/path'."
+            )
+        if schemes is not None and parsed.scheme not in set(schemes):
+            allowed = ", ".join(schemes)
+            raise ValidationError(
+                self._prefix + name, text, f"URL scheme must be one of: {allowed}"
+            )
+        return text
+
+    # -- scoping -----------------------------------------------------------
+
+    def prefixed(self, prefix: str) -> "Env":
+        """Return a new :class:`Env` with ``prefix`` appended to this one's.
+
+        Chainable, so ``Env(prefix="APP_").prefixed("DB_").str("HOST")`` reads
+        ``APP_DB_HOST`` from the same source.
+        """
+        return Env(source=self._source, prefix=self._prefix + prefix)
+
     # -- batch validation --------------------------------------------------
 
     @contextmanager
@@ -327,43 +509,37 @@ class Env:
             raise EnvValidationError(collector.errors)
 
 
-class _Collector(Env):
-    """An :class:`Env` that captures errors instead of raising (see ``collect``)."""
+# Every typed getter on Env — collect() wraps each so it records errors
+# instead of raising. Listed explicitly so unrelated methods aren't proxied.
+_GETTERS = frozenset(
+    {
+        "str", "int", "float", "bool", "list", "json", "path", "cast",
+        "decimal", "duration", "datetime", "date", "bytes", "url",
+    }
+)
+
+
+class _Collector:
+    """Wraps an :class:`Env` so failing getters record their error instead of
+    raising (see :meth:`Env.collect`). Any getter on ``Env`` is proxied."""
 
     def __init__(self, parent: Env) -> None:
-        super().__init__(source=parent._source, prefix=parent._prefix)
+        self._parent = parent
         self.errors: List[EnvError] = []
 
-    def _guard(self, method: str, args: tuple, kwargs: dict) -> Any:
-        try:
-            return getattr(super(), method)(*args, **kwargs)
-        except EnvError as exc:
-            self.errors.append(exc)
-            return None
+    def __getattr__(self, attr: str) -> Any:
+        if attr not in _GETTERS:
+            raise AttributeError(attr)
+        target = getattr(self._parent, attr)
 
-    def str(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("str", args, kwargs)
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            try:
+                return target(*args, **kwargs)
+            except EnvError as exc:
+                self.errors.append(exc)
+                return None
 
-    def int(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("int", args, kwargs)
-
-    def float(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("float", args, kwargs)
-
-    def bool(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("bool", args, kwargs)
-
-    def list(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("list", args, kwargs)
-
-    def json(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("json", args, kwargs)
-
-    def path(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("path", args, kwargs)
-
-    def cast(self, *args: Any, **kwargs: Any) -> Any:  # type: ignore[override]
-        return self._guard("cast", args, kwargs)
+        return guarded
 
 
 # A ready-to-use instance bound to the live process environment.
