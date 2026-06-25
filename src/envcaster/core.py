@@ -14,8 +14,11 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, List, Mapping, Optional, Sequence, TypeVar
 
+from envcaster.secret import Secret
+
 __all__ = [
     "Env",
+    "Secret",
     "EnvError",
     "MissingEnvError",
     "CastError",
@@ -475,6 +478,18 @@ class Env:
             )
         return text
 
+    def secret(self, name: str, default: Any = _UNSET, *, required: bool = False) -> Secret:
+        """Return the variable wrapped in a :class:`Secret` that masks itself.
+
+        The value never appears in logs, reprs, or tracebacks; call
+        ``.reveal()`` at the point of use. A ``default`` (e.g. ``None``) is
+        returned unchanged — wrap it in ``Secret`` yourself if you need masking.
+        """
+        raw = self._raw(name, default, required)
+        if raw is _USE_DEFAULT:
+            return default
+        return Secret(raw)
+
     # -- scoping -----------------------------------------------------------
 
     def prefixed(self, prefix: str) -> "Env":
@@ -514,7 +529,7 @@ class Env:
 _GETTERS = frozenset(
     {
         "str", "int", "float", "bool", "list", "json", "path", "cast",
-        "decimal", "duration", "datetime", "date", "bytes", "url",
+        "decimal", "duration", "datetime", "date", "bytes", "url", "secret",
     }
 )
 

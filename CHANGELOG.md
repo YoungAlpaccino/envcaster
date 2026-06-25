@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-06-22
+
+### Added
+- `Secret` — a wrapper that masks its value in `str()`, `repr()`, `format()`,
+  f-strings, and tracebacks, so secrets never leak into logs by accident. Call
+  `.reveal()` at the point of use. Supports `==`, `bool()`, and `len()` without
+  revealing, and is immutable.
+- `env.secret(name, …)` — read a variable as a `Secret`. Covered by `collect()`.
+
+### Notes
+- Fully backward compatible.
+
 ## [0.3.0] - 2026-06-22
 
 ### Added

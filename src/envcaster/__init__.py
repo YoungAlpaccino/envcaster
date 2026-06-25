@@ -19,16 +19,18 @@ from envcaster.core import (
     EnvError,
     EnvValidationError,
     MissingEnvError,
+    Secret,
     ValidationError,
     env,
 )
 from envcaster.dotenv import load_dotenv, read_dotenv
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "env",
     "Env",
+    "Secret",
     "EnvError",
     "MissingEnvError",
     "CastError",
