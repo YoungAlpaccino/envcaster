@@ -9,9 +9,15 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Dict, Mapping, Union
+from typing import Dict, Iterable, List, Mapping, Optional, Union
 
-__all__ = ["read_dotenv", "load_dotenv"]
+__all__ = [
+    "read_dotenv",
+    "load_dotenv",
+    "find_dotenv",
+    "load_layered",
+    "load_stack",
+]
 
 _PathLike = Union[str, "os.PathLike[str]"]
 
@@ -91,3 +97,73 @@ def load_dotenv(
         if override or key not in os.environ:
             os.environ[key] = value
     return values
+
+
+def find_dotenv(
+    filename: str = ".env", *, start: Optional[_PathLike] = None, usecwd: bool = False
+) -> str:
+    """Search for ``filename`` from ``start`` upward to the filesystem root.
+
+    Returns the first match as a string path, or ``""`` if none is found. By
+    default the search begins at the current working directory; pass ``start``
+    to begin elsewhere. Great for finding the project ``.env`` no matter which
+    subdirectory the process was launched from.
+    """
+    here = Path(os.getcwd() if usecwd or start is None else start).resolve()
+    for directory in (here, *here.parents):
+        candidate = directory / filename
+        if candidate.is_file():
+            return str(candidate)
+    return ""
+
+
+def load_layered(
+    paths: Iterable[_PathLike],
+    *,
+    override_env: bool = False,
+    interpolate: bool = False,
+) -> Dict[str, str]:
+    """Load several ``.env`` files in order, later files winning over earlier.
+
+    Files are merged into one mapping (so ``.env.local`` overrides ``.env``),
+    then injected into ``os.environ``. Real environment variables still win
+    unless ``override_env=True``. Missing files are skipped. Returns the merged
+    mapping that was applied.
+    """
+    merged: Dict[str, str] = {}
+    for path in paths:
+        merged.update(read_dotenv(path, interpolate=interpolate))
+    for key, value in merged.items():
+        if override_env or key not in os.environ:
+            os.environ[key] = value
+    return merged
+
+
+def load_stack(
+    stage: Optional[str] = None,
+    *,
+    root: _PathLike = ".",
+    override_env: bool = False,
+    interpolate: bool = True,
+) -> Dict[str, str]:
+    """Load a conventional stack of ``.env`` files for the given ``stage``.
+
+    Loads (lowest to highest precedence)::
+
+        .env  <  .env.<stage>  <  .env.local  <  .env.<stage>.local
+
+    so stage- and machine-specific overrides layer cleanly on top of committed
+    defaults. ``stage`` is typically something like ``"dev"`` or ``"prod"``.
+    """
+    base = Path(root)
+    names: List[str] = [".env"]
+    if stage:
+        names.append(f".env.{stage}")
+    names.append(".env.local")
+    if stage:
+        names.append(f".env.{stage}.local")
+    return load_layered(
+        [base / name for name in names],
+        override_env=override_env,
+        interpolate=interpolate,
+    )

@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-06-22
+
+### Added
+- `find_dotenv()` — search upward from a directory to the filesystem root for a
+  `.env`, so the project file is found from any subdirectory.
+- `load_layered(paths, …)` — load several `.env` files in order, later files
+  overriding earlier ones; real environment still wins unless `override_env=True`.
+- `load_stack(stage, …)` — load the conventional cascade
+  `.env < .env.<stage> < .env.local < .env.<stage>.local`.
+
+### Notes
+- Fully backward compatible.
+
 ## [0.4.0] - 2026-06-22
 
 ### Added

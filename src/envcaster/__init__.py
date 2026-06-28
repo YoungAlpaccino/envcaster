@@ -23,9 +23,15 @@ from envcaster.core import (
     ValidationError,
     env,
 )
-from envcaster.dotenv import load_dotenv, read_dotenv
+from envcaster.dotenv import (
+    find_dotenv,
+    load_dotenv,
+    load_layered,
+    load_stack,
+    read_dotenv,
+)
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "env",
@@ -38,4 +44,7 @@ __all__ = [
     "EnvValidationError",
     "load_dotenv",
     "read_dotenv",
+    "find_dotenv",
+    "load_layered",
+    "load_stack",
 ]
