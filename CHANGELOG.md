@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and this project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-06-22
+
+### Added
+- Audit trail — every `Env` now records which variables it reads:
+  - `env.used()` / `env.missing()` — names that were present / looked up but absent.
+  - `env.unused()` — source variables (under the prefix) never read; spots dead
+    or misspelled config.
+  - `env.dump(mask_secrets=True)` — `{name: value}` of everything read, masking
+    values read via `secret()` or whose name looks sensitive (`*TOKEN*`,
+    `*PASSWORD*`, …). Safe to log.
+  - `env.reset_audit()` — clear the record.
+
+### Notes
+- Fully backward compatible.
+
 ## [0.5.0] - 2026-06-22
 
 ### Added

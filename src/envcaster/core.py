@@ -97,6 +97,14 @@ _USE_DEFAULT: Any = object()
 _TRUE = {"1", "true", "t", "yes", "y", "on"}
 _FALSE = {"0", "false", "f", "no", "n", "off"}
 
+# Name fragments that mark a variable as sensitive for dump() masking.
+_SECRET_HINTS = ("SECRET", "TOKEN", "PASSWORD", "PASSWD", "PRIVATE", "APIKEY", "API_KEY")
+
+
+def _looks_secret(name: str) -> bool:
+    upper = name.upper()
+    return any(hint in upper for hint in _SECRET_HINTS)
+
 # Duration: a bare number is seconds; otherwise a run of <number><unit> tokens.
 _DURATION_UNITS = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, "d": 86400.0, "w": 604800.0}
 _DURATION_TOKEN = re.compile(r"(\d+(?:\.\d+)?)\s*(ms|s|m|h|d|w)", re.IGNORECASE)
@@ -129,6 +137,9 @@ class Env:
     ) -> None:
         self._source = source
         self._prefix = prefix
+        # Audit trail: every key looked up -> its raw value (None if absent).
+        self._read: "dict[str, Optional[str]]" = {}
+        self._secret_keys: "set[str]" = set()
 
     # -- internals ---------------------------------------------------------
 
@@ -139,6 +150,7 @@ class Env:
     def _raw(self, name: str, default: Any, required: bool) -> str:
         key = self._prefix + name
         value = self._mapping().get(key)
+        self._read[key] = value
         if value is None:
             if required or default is _UNSET:
                 raise MissingEnvError(key)
@@ -485,10 +497,53 @@ class Env:
         ``.reveal()`` at the point of use. A ``default`` (e.g. ``None``) is
         returned unchanged — wrap it in ``Secret`` yourself if you need masking.
         """
+        self._secret_keys.add(self._prefix + name)
         raw = self._raw(name, default, required)
         if raw is _USE_DEFAULT:
             return default
         return Secret(raw)
+
+    # -- audit -------------------------------------------------------------
+
+    def used(self) -> List[str]:
+        """Sorted list of variable names that were read **and** were present."""
+        return sorted(k for k, v in self._read.items() if v is not None)
+
+    def missing(self) -> List[str]:
+        """Sorted list of variable names that were looked up but were absent."""
+        return sorted(k for k, v in self._read.items() if v is None)
+
+    def unused(self) -> List[str]:
+        """Variables in the source (under this prefix) that were never read.
+
+        Handy for spotting dead or misspelled configuration.
+        """
+        seen = set(self._read)
+        return sorted(
+            k for k in self._mapping() if k.startswith(self._prefix) and k not in seen
+        )
+
+    def dump(self, *, mask_secrets: bool = True) -> "dict[str, str]":
+        """Return ``{name: value}`` for every present variable that was read.
+
+        With ``mask_secrets`` (default), values read via :meth:`secret` or whose
+        name looks sensitive (``*SECRET*``, ``*TOKEN*``, ``*PASSWORD*``, …) are
+        shown as ``***`` — safe to log when debugging startup config.
+        """
+        out: "dict[str, str]" = {}
+        for key, value in self._read.items():
+            if value is None:
+                continue
+            if mask_secrets and (key in self._secret_keys or _looks_secret(key)):
+                out[key] = "***"
+            else:
+                out[key] = value
+        return out
+
+    def reset_audit(self) -> None:
+        """Forget the record of which variables have been read."""
+        self._read.clear()
+        self._secret_keys.clear()
 
     # -- scoping -----------------------------------------------------------
 
